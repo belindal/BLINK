@@ -263,6 +263,11 @@ class BlinkParser(argparse.ArgumentParser):
             default=None,
             type=int,
         )
+        parser.add_argument(
+            "--dont_use_cached",
+            action="store_true",
+            help="Don't use cached tokenized representations",
+        )
 
     def add_eval_args(self, args=None):
         """

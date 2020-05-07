@@ -507,11 +507,12 @@ def _run_biencoder(biencoder, dataloader, candidate_encoding, top_k=100, device=
     for step, batch in enumerate(tqdm(dataloader)):
         context_input, _, label_ids, mention_idxs = batch
         with torch.no_grad():
-            scores = biencoder.score_candidate(
+            scores, span_start_logits, span_end_logits = biencoder.score_candidate(
                 context_input, None,
                 cand_encs=candidate_encoding.to(device),
                 mention_idxs=mention_idxs.to(device),
             )
+        # TODO USE SPAN_START AND SPAN_END
         dist, indices = scores.topk(top_k)
         labels.extend(label_ids.data.numpy())
         context_inputs.extend(context_input.data.numpy())

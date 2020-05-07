@@ -62,7 +62,7 @@ def evaluate(
         candidate_input = batch[1]
         mention_idxs = batch[-1]
         with torch.no_grad():
-            eval_loss, logits = reranker(context_input, candidate_input, mention_idxs=mention_idxs)
+            eval_loss, logits = reranker(context_input, candidate_input, gold_mention_idxs=mention_idxs)
 
         logits = logits.detach().cpu().numpy()
         # Using in-batch negatives, the label ids are diagonal
@@ -172,7 +172,7 @@ def main(params):
         candidate_token_ids=candidate_token_ids,
         entity2id=entity2id,
         saved_context_file=os.path.join(tokenized_contexts_dir, "train.json"),
-        get_cached_representation=(not params["debug"]),
+        get_cached_representation=(not params["debug"] and not params["dont_use_cached"]),
         start_idx=params["start_idx"],
         end_idx=params["end_idx"],
     )
@@ -204,7 +204,7 @@ def main(params):
         candidate_token_ids=candidate_token_ids,
         entity2id=entity2id,
         saved_context_file=os.path.join(tokenized_contexts_dir, "valid.json"),
-        get_cached_representation=(not params["debug"]),
+        get_cached_representation=(not params["debug"] and not params["dont_use_cached"]),
     )
     valid_sampler = SequentialSampler(valid_tensor_data)
     valid_dataloader = DataLoader(
@@ -255,7 +255,7 @@ def main(params):
             context_input = batch[0]	
             candidate_input = batch[1]
             mention_idxs = batch[-1]
-            loss, _ = reranker(context_input, candidate_input, mention_idxs=mention_idxs)
+            loss, _ = reranker(context_input, candidate_input, gold_mention_idxs=mention_idxs)
 
             # if n_gpu > 1:
             #     loss = loss.mean() # mean() to average on multi-gpu.
@@ -290,6 +290,11 @@ def main(params):
                 evaluate(
                     reranker, valid_dataloader, params, device=device, logger=logger,
                 )
+                logger.info("***** Saving fine - tuned model *****")
+                epoch_output_folder_path = os.path.join(
+                    model_output_path, "epoch_{}_step_{}".format(epoch_idx, step)
+                )
+                utils.save_model(model, tokenizer, epoch_output_folder_path)
                 model.train()
                 logger.info("\n")
 

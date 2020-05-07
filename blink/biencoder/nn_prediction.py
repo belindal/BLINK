@@ -54,11 +54,12 @@ def get_topk_predictions(
         batch = tuple(t.to(device) for t in batch)
         context_input, _, srcs, label_ids = batch
         src = srcs[0].item()
-        scores = reranker.score_candidate(
+        scores, start_logits, end_logits = reranker.score_candidate(
             context_input, 
             None, 
             cand_encs=cand_encode_list[src].to(device)
         )
+        # TODO USE SPAN_START AND SPAN_END
         values, indicies = scores.topk(top_k)
         old_src = src
         for i in range(context_input.size(0)):
@@ -68,11 +69,12 @@ def get_topk_predictions(
             if srcs[i] != old_src:
                 src = srcs[i].item()
                 # not the same domain, need to re-do
-                new_scores = reranker.score_candidate(
+                new_scores, start_logits, end_logits = reranker.score_candidate(
                     context_input[[i]], 
                     None,
                     cand_encs=cand_encode_list[src].to(device)
                 )
+                # TODO USE SPAN_START AND SPAN_END
                 _, inds = new_scores.topk(top_k)
                 inds = inds[0]
 

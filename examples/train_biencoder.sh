@@ -47,7 +47,7 @@
 data=$1  # webqsp/zeshel/pretrain_wiki
 mention_agg_type=$2  # all_avg/fl_avg/fl_linear/fl_mlp/none
 objective=$3  # train/predict/both (default)
-batch_size=$4  # 64 (for training large model)
+batch_size=$4  # 64/128 (for training large model)
 chunk_start=$5
 chunk_end=$6
 
@@ -89,7 +89,7 @@ then
   echo "Running ${mention_agg_type} biencoder training on ${data} dataset."
   if [ "${data}" = "pretrain_wiki" ]
   then
-    python blink/biencoder/train_biencoder.py \
+    python blink/biencoder/train_biencoder.py ${all_mention_args} \
       --output_path data/experiments/pretrain/biencoder_${mention_agg_type} \
       --data_path /private/home/ledell/data/wiki_ent2 \
       --num_train_epochs 100 \
@@ -97,11 +97,12 @@ then
       --train_batch_size ${batch_size} \
       --eval_batch_size ${batch_size} \
       --bert_model bert-large-uncased \
-      --data_parallel ${all_mention_args}
+      --data_parallel \
+      --eval_interval 100
       #--debug \
       # --start_idx ${chunk_start} --end_idx ${chunk_end}   # TODO DELETE THIS LATER!!!!!
   else
-    python blink/biencoder/train_biencoder.py \
+    python blink/biencoder/train_biencoder.py ${all_mention_args} \
       --output_path data/experiments/${data}/biencoder_${mention_agg_type} \
       --path_to_model /private/home/ledell/BLINK-Internal/models/biencoder_wiki_large.bin \
       --data_path ${data_path} \
@@ -112,7 +113,8 @@ then
       --train_batch_size ${batch_size} \
       --eval_batch_size ${batch_size} \
       --bert_model bert-large-uncased \
-      --data_parallel ${all_mention_args}
+      --dont_use_cached #\
+      # --data_parallel
   fi
 fi
 

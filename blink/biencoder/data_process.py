@@ -71,7 +71,7 @@ def get_context_representation(
     context_tokens = ["[CLS]"] + context_tokens + ["[SEP]"]
     mention_idxs = [
         len(context_left[-left_quota:]) + 1,
-        len(context_left[-left_quota:]) + len(mention_tokens) + 1,
+        len(context_left[-left_quota:]) + len(mention_tokens),  # make inclusive (-1)
     ]
     input_ids = tokenizer.convert_tokens_to_ids(context_tokens)
     padding = [0] * (max_seq_length - len(input_ids))
@@ -158,6 +158,7 @@ def process_mention_data(
     ent_end_id = tokenizer.convert_tokens_to_ids(ent_end_token)
     for idx, sample in enumerate(iter_):
         if saved_contexts is not None:
+            # TODO MULTIPLE GOLD MENTIONS / SAMPLE
             assert saved_contexts[idx]['mention'] == sample['mention']
             assert saved_contexts[idx]['context_left'] == sample['context_left']
             assert saved_contexts[idx]['context_right'] == sample['context_right']
@@ -174,7 +175,7 @@ def process_mention_data(
                 )
             mention_idxs = [
                 len(saved_contexts[idx]['context_left_ids']),
-                len(saved_contexts[idx]['context_left_ids']) + len(saved_contexts[idx]['mention_tokens']),
+                len(saved_contexts[idx]['context_left_ids']) + len(saved_contexts[idx]['mention_tokens']) - 1,  # make inclusive
             ]
             # TODO VERIFY THE SAVED CONTEXTS
             context_tokens = {
@@ -195,6 +196,7 @@ def process_mention_data(
                 )
                 assert context_tokens == context_tokens_test
         else:
+            # TODO MULTIPLE GOLD MENTIONS / SAMPLE
             context_tokens = get_context_representation(
                 sample,
                 tokenizer,
@@ -207,18 +209,18 @@ def process_mention_data(
             )
             # save cached representation
             if get_cached_representation:
-                mention_ids = context_tokens['ids'][context_tokens['mention_idxs'][0]:context_tokens['mention_idxs'][1]]
-                mention_tokens = context_tokens['tokens'][context_tokens['mention_idxs'][0]:context_tokens['mention_idxs'][1]]
+                mention_ids = context_tokens['ids'][context_tokens['mention_idxs'][0]:context_tokens['mention_idxs'][1]+1]
+                mention_tokens = context_tokens['tokens'][context_tokens['mention_idxs'][0]:context_tokens['mention_idxs'][1]+1]
                 if add_mention_bounds:
                     mention_ids = mention_ids[1:-1]
                     mention_tokens = mention_tokens[1:-1]
                 saved_encodings = {
                     'context_left_tokens': context_tokens['tokens'][:context_tokens['mention_idxs'][0]],
                     'mention_tokens': mention_tokens,
-                    'context_right_tokens': context_tokens['tokens'][context_tokens['mention_idxs'][1]:],
+                    'context_right_tokens': context_tokens['tokens'][context_tokens['mention_idxs'][1]+1:],
                     'context_left_ids': context_tokens['ids'][:context_tokens['mention_idxs'][0]],
                     'mention_ids': mention_ids,
-                    'context_right_ids': context_tokens['ids'][context_tokens['mention_idxs'][1]:],
+                    'context_right_ids': context_tokens['ids'][context_tokens['mention_idxs'][1]+1:],
                     'context_left': sample['context_left'],
                     'mention': sample['mention'],
                     'context_right': sample['context_right'],
