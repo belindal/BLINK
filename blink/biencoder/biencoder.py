@@ -97,6 +97,10 @@ class GetContextEmbedsHead(nn.Module):
                 print(mention_idxs)
                 import pdb
                 pdb.set_trace()
+                batched_span_select(
+                    bert_output,  # (batch_size, sequence_length, embedding_size)
+                    mention_idxs.unsqueeze(1),  # (batch_size, num_spans=1, 2)
+                )
             embedding_ctxt[~mask] = 0  # 0 out masked elements
             embedding_ctxt = embedding_ctxt.squeeze(1)  # (batch_size, max_batch_span_width, embedding_size)
             mask = mask.squeeze(1)  # (batch_size, max_batch_span_width, embedding_size)

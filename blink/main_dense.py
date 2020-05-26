@@ -538,6 +538,7 @@ def _run_biencoder(
     context_inputs = []
     nns = []
     dists = []
+    mention_scores_list = []
     sample_idx = 0
     ctxt_idx = 0
     new_samples = samples
@@ -658,12 +659,14 @@ def _run_biencoder(
         context_inputs.extend(context_input.data.numpy())
         nns.extend(indices.data.cpu().numpy())
         dists.extend(dist.data.cpu().numpy())
+        if jointly_extract_mentions:
+            mention_scores_list.extend(topK_mention_scores_flattened.unsqueeze(-1).expand_as(dist).data.cpu().numpy())
         sys.stdout.write("{}/{} \r".format(step, len(dataloader)))
         sys.stdout.flush()
     if jointly_extract_mentions:
         assert sample_idx == len(new_sample_to_all_context_inputs)
         assert ctxt_idx == len(new_samples)
-    return labels, nns, dists, new_samples, new_sample_to_all_context_inputs
+    return labels, nns, dists, mention_scores_list, new_samples, new_sample_to_all_context_inputs
 
 
 def _process_crossencoder_dataloader(context_input, label_input, crossencoder_params):
@@ -690,7 +693,7 @@ def _run_crossencoder(
     return accuracy, res
 
 
-def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample_to_all_context_inputs, filtered_indices=None, debug=False):
+def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample_to_all_context_inputs, filtered_indices=None, debug=False, mention_scores_list=None):
     # TODO save ALL samples
     if not debug:
         try:
@@ -702,6 +705,7 @@ def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample
     samples_merged = []
     nns_merged = []
     dists_merged = []
+    mention_scores_list_merged = []
     labels_merged = []
     entity_mention_bounds_idx = []
     filtered_cluster_indices = []  # indices of entire chunks that are filtered out
@@ -735,13 +739,21 @@ def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample
             nns_merged.append(nns[context_input_idxs[0]])
             # already sorted, don't need to sort more
             dists_merged.append(dists[dists_idx])
+            if mention_scores_list is not None:
+                import pdb
+                pdb.set_trace()
+                mention_scores_list_merged.append(mention_scores_list[dists_idx])
             entity_mention_bounds_idx.append(np.zeros(dists[dists_idx].shape, dtype=int))
         else:  # merge refering to same example
             all_distances = np.concatenate([dists[dists_idx + j] for j in range(len(context_input_idxs))], axis=-1)
+            if mention_scores_list is not None:
+                all_mention_scores = np.concatenate([mention_scores_list[dists_idx + j] for j in range(len(context_input_idxs))], axis=-1)
             all_cand_outputs = np.concatenate([nns[context_input_idxs[j]] for j in range(len(context_input_idxs))], axis=-1)
             dist_sort_idx = np.argsort(-all_distances)  # get in descending order
             nns_merged.append(all_cand_outputs[dist_sort_idx])
             dists_merged.append(all_distances[dist_sort_idx])
+            if mention_scores_list is not None:
+                mention_scores_list_merged.append(all_mention_scores[dist_sort_idx])
 
             # selected_mention_idx
             # [0,len(dists[0])-1], [len(dists[0]),2*len(dists[0])-1], etc. same range all refer to same mention
@@ -778,14 +790,15 @@ def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample
         if "all_gold_entities_pos" in samples[context_input_idxs[0]]:
             samples_merged[len(samples_merged)-1]["all_gold_entities_pos"] = samples[context_input_idxs[0]]["all_gold_entities_pos"]
         dists_idx += len(context_input_idxs)
-    return samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, filtered_cluster_indices
+    return samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, filtered_cluster_indices, mention_scores_list_merged
 
 
 def _retrieve_from_saved_biencoder_outs(save_preds_dir):
     labels = np.load(os.path.join(args.save_preds_dir, "biencoder_labels.npy"))
     nns = np.load(os.path.join(args.save_preds_dir, "biencoder_nns.npy"))
     dists = np.load(os.path.join(args.save_preds_dir, "biencoder_dists.npy"))
-    return labels, nns, dists
+    mention_scores_list = np.load(os.path.join(args.save_preds_dir, "biencoder_mentions.npy"))
+    return labels, nns, dists, mention_scores_list
 
 
 def load_models(args, logger):
@@ -981,7 +994,7 @@ def run(
             logger.info("Running biencoder...")
             top_k = 100
 
-            labels, nns, dists, samples, sample_to_all_context_inputs = _run_biencoder(
+            labels, nns, dists, mention_scores_list, samples, sample_to_all_context_inputs = _run_biencoder(
                 biencoder, dataloader, candidate_encoding, samples=samples,
                 top_k=top_k, device="cpu" if biencoder_params["no_cuda"] else "cuda",
                 jointly_extract_mentions=(args.do_ner == "joint"),
@@ -993,19 +1006,21 @@ def run(
             np.save(os.path.join(args.save_preds_dir, "biencoder_labels.npy"), labels)
             np.save(os.path.join(args.save_preds_dir, "biencoder_nns.npy"), nns)
             np.save(os.path.join(args.save_preds_dir, "biencoder_dists.npy"), dists)
+            np.save(os.path.join(args.save_preds_dir, "biencoder_mentions.npy"), mention_scores_list)
             json.dump(samples, open(os.path.join(args.save_preds_dir, "samples.json"), "w"))
+            json.dump(sample_to_all_context_inputs, open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json"), "w"))
         else:
-            labels, nns, dists = _retrieve_from_saved_biencoder_outs(args.save_preds_dir)
-            if args.do_ner != "joint" and not os.path.exists(os.path.join(args.save_preds_dir, "samples.json")):
-                json.dump(samples, open(os.path.join(args.save_preds_dir, "samples.json"), "w"))  # TODO UNCOMMENT
-                json.dump(sample_to_all_context_inputs, open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json"), "w"))
-            elif args.do_ner == "joint":
+            labels, nns, dists, mention_scores_list = _retrieve_from_saved_biencoder_outs(args.save_preds_dir)
+            # if args.do_ner != "joint" and not os.path.exists(os.path.join(args.save_preds_dir, "samples.json")):
+            #     json.dump(samples, open(os.path.join(args.save_preds_dir, "samples.json"), "w"))  # TODO UNCOMMENT
+            #     json.dump(sample_to_all_context_inputs, open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json"), "w"))
+            if args.do_ner == "joint":
                 samples = json.load(open(os.path.join(args.save_preds_dir, "samples.json")))
                 sample_to_all_context_inputs = json.load(open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json")))
 
         logger.info("Merging inputs...")
-        samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, _ = _combine_same_inputs_diff_mention_bounds(
-            samples, labels, nns, dists, sample_to_all_context_inputs,
+        samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, _, mention_scores_list_merged = _combine_same_inputs_diff_mention_bounds(
+            samples, labels, nns, dists, sample_to_all_context_inputs, mention_scores_list=mention_scores_list,
         )
         logger.info("Finished merging inputs")
 
@@ -1058,11 +1073,12 @@ def run(
                     label = labels_merged[i]
                     sample = samples_merged[i]
                     distances = dists_merged[i]
+                    mention_scores = mention_scores_list_merged[i]
                     input = ["{}[{}]{}".format(
-                        sample['context_left'][i],
-                        sample['mention'][i], 
-                        sample['context_right'][i],
-                    ) for i in range(len(sample['context_left']))]
+                        sample['context_left'][j],
+                        sample['mention'][j],
+                        sample['context_right'][j],
+                    ) for j in range(len(sample['context_left']))]
                     if 'gold_context_left' in sample:
                         gold_mention_bounds = "{}[{}]{}".format(sample['gold_context_left'],
                             sample['gold_mention'], sample['gold_context_right'])
@@ -1102,35 +1118,39 @@ def run(
                             all_pred_entities = pred_kbids_sorted[:1]
                             e_mention_bounds = entity_mention_bounds_idx[i][:1].tolist()
 
-                            # 1 PER BOUND
+                            # SOME GLOBAL COHERENCY METHOD
+
+                            # BY DISTANCE THRESHOLD
+                            # BY mention_scores THRESHOLD
+                            all_indices_to_select = np.argwhere(distances > -2)
+                            all_pred_entities = [pred_kbids_sorted[i[0]] for i in all_indices_to_select]
+                            e_mention_bounds = entity_mention_bounds_idx[i][distances > -2].tolist()
+
+                            # # 1 PER BOUND
+                            '''
                             e_mention_bounds_idxs = [np.where(entity_mention_bounds_idx[i] == j)[0][0] for j in range(len(sample['context_left']))]
                             # sort bounds
                             e_mention_bounds_idxs.sort()
                             all_pred_entities = []
                             e_mention_bounds = []
-                            try:
-                                for bound_idx in e_mention_bounds_idxs:
-                                    if pred_kbids_sorted[bound_idx] not in all_pred_entities:
-                                        all_pred_entities.append(pred_kbids_sorted[bound_idx])
-                                        e_mention_bounds.append(entity_mention_bounds_idx[i][bound_idx])
-                            except:
-                                import pdb
-                                pdb.set_trace()
-                            try:
-                                pred_triples = [(
-                                    # sample['all_gold_entities'][i],
-                                    all_pred_entities[j], # TODO REVERT THIS
-                                    len(sample['context_left'][e_mention_bounds[j]]), 
-                                    len(sample['context_left'][e_mention_bounds[j]]) + len(sample['mention'][e_mention_bounds[j]]),
-                                ) for j in range(len(all_pred_entities))]
-                            except:
-                                import pdb
-                                pdb.set_trace()
+                            for bound_idx in e_mention_bounds_idxs:
+                                if pred_kbids_sorted[bound_idx] not in all_pred_entities:
+                                    all_pred_entities.append(pred_kbids_sorted[bound_idx])
+                                    e_mention_bounds.append(entity_mention_bounds_idx[i][bound_idx])
+                            # '''
+
+                            pred_triples = [(
+                                # sample['all_gold_entities'][i],
+                                all_pred_entities[j], # TODO REVERT THIS
+                                len(sample['context_left'][e_mention_bounds[j]]), 
+                                len(sample['context_left'][e_mention_bounds[j]]) + len(sample['mention'][e_mention_bounds[j]]),
+                            ) for j in range(len(all_pred_entities))]
                             gold_triples = [(
                                 sample['all_gold_entities'][j],
                                 sample['all_gold_entities_pos'][j][0], 
                                 sample['all_gold_entities_pos'][j][1],
                             ) for j in range(len(sample['all_gold_entities']))]
+
                             num_correct += entity_linking_tp_with_overlap(gold_triples, pred_triples)
                             num_predicted += len(all_pred_entities)
                             num_gold += len(sample["all_gold_entities"])
@@ -1151,6 +1171,7 @@ def run(
                         "gold_mention_bounds": gold_mention_bounds,
                         "gold_KBid": sample['label'],
                         "scores": distances.tolist(),
+                        "mention_scores": mention_scores.tolist(),
                     }
 
                     all_entity_preds.append(entity_results)
@@ -1324,7 +1345,7 @@ def run(
             if args.debug_cross:
                 import pdb
                 pdb.set_trace()
-            samples_merged, labels_merged, nns_merged, scores_merged, entity_mention_bounds_idx, filtered_cluster_indices = \
+            samples_merged, labels_merged, nns_merged, scores_merged, entity_mention_bounds_idx, filtered_cluster_indices, _ = \
                 _combine_same_inputs_diff_mention_bounds(
                     samples, labels, nns, res["logits"], sample_to_all_context_inputs, debug=args.debug_cross, filtered_indices=filtered_indices
                 )
