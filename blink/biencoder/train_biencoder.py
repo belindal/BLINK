@@ -90,8 +90,6 @@ def evaluate(
                 D, I = faiss_index.search(embedding_context.contiguous().detach().cpu().numpy(), 1)
                 I = I.flatten()
                 tmp_eval_accuracy = np.sum(I == label_ids.detach().cpu().numpy())
-                import pdb
-                pdb.set_trace()
                 # reranker.tokenizer.decode(context_input[0].tolist())
             else:
                 logits, start_logits, end_logits = reranker(
