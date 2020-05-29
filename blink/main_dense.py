@@ -739,20 +739,18 @@ def _combine_same_inputs_diff_mention_bounds(samples, labels, nns, dists, sample
             nns_merged.append(nns[context_input_idxs[0]])
             # already sorted, don't need to sort more
             dists_merged.append(dists[dists_idx])
-            if mention_scores_list is not None:
-                import pdb
-                pdb.set_trace()
+            if mention_scores_list is not None and len(mention_scores_list) > 0:
                 mention_scores_list_merged.append(mention_scores_list[dists_idx])
             entity_mention_bounds_idx.append(np.zeros(dists[dists_idx].shape, dtype=int))
         else:  # merge refering to same example
             all_distances = np.concatenate([dists[dists_idx + j] for j in range(len(context_input_idxs))], axis=-1)
-            if mention_scores_list is not None:
+            if mention_scores_list is not None and len(mention_scores_list) > 0:
                 all_mention_scores = np.concatenate([mention_scores_list[dists_idx + j] for j in range(len(context_input_idxs))], axis=-1)
             all_cand_outputs = np.concatenate([nns[context_input_idxs[j]] for j in range(len(context_input_idxs))], axis=-1)
             dist_sort_idx = np.argsort(-all_distances)  # get in descending order
             nns_merged.append(all_cand_outputs[dist_sort_idx])
             dists_merged.append(all_distances[dist_sort_idx])
-            if mention_scores_list is not None:
+            if mention_scores_list is not None and len(mention_scores_list) > 0:
                 mention_scores_list_merged.append(all_mention_scores[dist_sort_idx])
 
             # selected_mention_idx
@@ -1073,7 +1071,9 @@ def run(
                     label = labels_merged[i]
                     sample = samples_merged[i]
                     distances = dists_merged[i]
-                    mention_scores = mention_scores_list_merged[i]
+                    mention_scores = np.array([])
+                    if len(mention_scores_list_merged) > 0:
+                        mention_scores = mention_scores_list_merged[i]
                     input = ["{}[{}]{}".format(
                         sample['context_left'][j],
                         sample['mention'][j],
@@ -1115,19 +1115,23 @@ def run(
                         if "all_gold_entities" in sample:
                             # get top for each mention bound, w/out duplicates
                             # TOP-1
+                            '''
                             all_pred_entities = pred_kbids_sorted[:1]
                             e_mention_bounds = entity_mention_bounds_idx[i][:1].tolist()
+                            # '''
 
                             # SOME GLOBAL COHERENCY METHOD
 
                             # BY DISTANCE THRESHOLD
                             # BY mention_scores THRESHOLD
+                            '''
                             all_indices_to_select = np.argwhere(distances > -2)
                             all_pred_entities = [pred_kbids_sorted[i[0]] for i in all_indices_to_select]
                             e_mention_bounds = entity_mention_bounds_idx[i][distances > -2].tolist()
+                            # '''
 
                             # # 1 PER BOUND
-                            '''
+                            # '''
                             e_mention_bounds_idxs = [np.where(entity_mention_bounds_idx[i] == j)[0][0] for j in range(len(sample['context_left']))]
                             # sort bounds
                             e_mention_bounds_idxs.sort()
