@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from collections import OrderedDict
+import time
 
 from pytorch_transformers.modeling_bert import (
     BertPreTrainedModel,
@@ -182,9 +183,14 @@ class BiEncoderModule(torch.nn.Module):
             # get context encoding
             if self.mention_aggregation_type is None:
                 # OLD system: don't do mention aggregation (use tokens around mention)
+                import pdb
+                pdb.set_trace()
+                start_time = time.time()
                 embedding_ctxt = self.context_encoder(
                     token_idx_ctxt, segment_idx_ctxt, mask_ctxt,# DEBUG=True,
                 )
+                end_time = time.time()
+                print(end_time - start_time)
             else:
                 # NEW system: aggregate mention tokens
                 # retrieve mention tokens

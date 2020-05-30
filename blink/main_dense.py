@@ -39,6 +39,7 @@ import os
 import sys
 from tqdm import tqdm
 import pdb
+import time
 
 
 HIGHLIGHTS = [
@@ -561,6 +562,8 @@ def _run_biencoder(
             # # '''
 
             if not jointly_extract_mentions:
+                import pdb
+                pdb.set_trace()
                 scores, start_logits, end_logits = biencoder.score_candidate(
                     context_input, None,
                     cand_encs=candidate_encoding.to(device),
@@ -992,6 +995,7 @@ def run(
             logger.info("Running biencoder...")
             top_k = 100
 
+            start_time = time.time()
             labels, nns, dists, mention_scores_list, samples, sample_to_all_context_inputs = _run_biencoder(
                 biencoder, dataloader, candidate_encoding, samples=samples,
                 top_k=top_k, device="cpu" if biencoder_params["no_cuda"] else "cuda",
@@ -999,6 +1003,8 @@ def run(
                 sample_to_all_context_inputs=sample_to_all_context_inputs,
                 num_mentions=int(args.qa_classifier_threshold) if args.do_ner == "joint" else None,
             )
+            end_time = time.time()
+            runtime = end_time - start_time
             logger.info("Finished running biencoder")
             
             np.save(os.path.join(args.save_preds_dir, "biencoder_labels.npy"), labels)
@@ -1007,6 +1013,8 @@ def run(
             np.save(os.path.join(args.save_preds_dir, "biencoder_mentions.npy"), mention_scores_list)
             json.dump(samples, open(os.path.join(args.save_preds_dir, "samples.json"), "w"))
             json.dump(sample_to_all_context_inputs, open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json"), "w"))
+            with open(os.path.join(args.save_preds_dir, "runtime.txt"), "w") as wf:
+                wf.write(str(runtime))
         else:
             labels, nns, dists, mention_scores_list = _retrieve_from_saved_biencoder_outs(args.save_preds_dir)
             # if args.do_ner != "joint" and not os.path.exists(os.path.join(args.save_preds_dir, "samples.json")):
@@ -1015,6 +1023,7 @@ def run(
             if args.do_ner == "joint":
                 samples = json.load(open(os.path.join(args.save_preds_dir, "samples.json")))
                 sample_to_all_context_inputs = json.load(open(os.path.join(args.save_preds_dir, "sample_to_all_context_inputs.json")))
+            runtime = float(open(os.path.join(args.save_preds_dir, "runtime.txt")).read())
 
         logger.info("Merging inputs...")
         samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, _, mention_scores_list_merged = _combine_same_inputs_diff_mention_bounds(
@@ -1196,6 +1205,7 @@ def run(
             if args.do_ner == "none":
                 print("number unknown entity examples: {}".format(num_unk))
 
+            print("runtime = {}".format(runtime))
             # get recall values
             top_k = 100
             x = []
