@@ -381,7 +381,7 @@ def __load_test(
                 line_json = json.loads(line)
                 all_ex_preds = []
                 for i, pred in enumerate(line_json['all_predictions']):
-                    if "test" in test_filename:
+                    if "graph.test" in test_filename:
                         pred['logit'][1] = math.log(pred['logit'][1])
                     if (
                         (do_top_1 and i == 0) or 
