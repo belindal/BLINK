@@ -137,7 +137,7 @@ command="python blink/main_dense.py -q ${debug} --fast \
     --biencoder_config ${biencoder_config} \
     --crossencoder_model ${crossencoder_model} \
     --crossencoder_config ${crossencoder_config} \
-    --save_preds_dir /checkpoint/belindali/entity_link/saved_preds/${test_questions}_${subset}_${model_full}_${ner}${qa_classifier_threshold} \
+    --save_preds_dir /checkpoint/belindali/entity_link/saved_preds/${test_questions}_${subset}_${model_full}_${ner}${qa_classifier_threshold}_${eval_batch_size} \
     -n ${ner} ${qa_classifier_threshold_args} \
     --eval_batch_size ${eval_batch_size} ${get_predictions} ${cuda_args}"
     # --no_mention_bounds_biencoder --mention_aggregation_type all_avg"

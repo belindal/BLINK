@@ -183,8 +183,6 @@ class BiEncoderModule(torch.nn.Module):
             # get context encoding
             if self.mention_aggregation_type is None:
                 # OLD system: don't do mention aggregation (use tokens around mention)
-                import pdb
-                pdb.set_trace()
                 start_time = time.time()
                 embedding_ctxt = self.context_encoder(
                     token_idx_ctxt, segment_idx_ctxt, mask_ctxt,# DEBUG=True,

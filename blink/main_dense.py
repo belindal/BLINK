@@ -31,9 +31,9 @@ from blink.crossencoder.data_process import prepare_crossencoder_data
 from blink.crossencoder.train_cross import modify, evaluate
 import math
 
-import vcg_utils
-from vcg_utils.mention_extraction import extract_entities
-from vcg_utils.measures import entity_linking_tp_with_overlap
+import blink.vcg_utils
+from blink.vcg_utils.mention_extraction import extract_entities
+from blink.vcg_utils.measures import entity_linking_tp_with_overlap
 
 import os
 import sys
@@ -112,6 +112,18 @@ def _load_candidates(
 ):
     candidate_encoding = torch.load(entity_encoding)
     candidate_token_ids = torch.load(entity_token_ids)
+    if os.path.exists("models/title2id.json"):
+        title2id = json.load(open("models/title2id.json"))
+        id2title = json.load(open("models/id2title.json"))
+        logger.info("Loaded titles")
+        id2text = json.load(open("models/id2text.json"))
+        logger.info("Loaded texts")
+        kb2id = json.load(open("models/kb2id.json"))
+        id2kb = json.load(open("models/id2kb.json"))
+        logger.info("Loaded KBIDS")
+        wikipedia_id2local_id = json.load(open("models/wikipedia_id2local_id.json"))
+        return candidate_encoding, candidate_token_ids, title2id, id2title, id2text, wikipedia_id2local_id, kb2id, id2kb
+
     # load all the 5903527 entities
     title2id = {}
     id2title = {}
@@ -174,6 +186,13 @@ def _load_candidates(
         torch.save(candidate_encoding, "new_" + entity_encoding)
     if logger:
         logger.info("missing {}/{} wikidata IDs".format(missing_entity_ids, local_idx))
+
+    json.dump(title2id, open("models/title2id.json", "w"))
+    json.dump(id2title, open("models/id2title.json", "w"))
+    json.dump(id2text, open("models/id2text.json", "w"))
+    json.dump(kb2id, open("models/kb2id.json", "w"))
+    json.dump(id2kb, open("models/id2kb.json", "w"))
+    json.dump(wikipedia_id2local_id, open("models/wikipedia_id2local_id.json", "w"))
     return candidate_encoding, candidate_token_ids, title2id, id2title, id2text, wikipedia_id2local_id, kb2id, id2kb
 
 
@@ -319,7 +338,7 @@ def get_mention_bound_candidates(
 
 
 def __load_test(
-    test_filename, kb2id, logger, args,
+    test_filename, kb2id, logger, qa_classifier_threshold,
     qa_data=False, id2kb=None, title2id=None,
     do_ner="none", use_ngram_extractor=False, max_mention_len=4,
     debug=False, main_entity_only=False, biencoder=None,
@@ -345,12 +364,12 @@ def __load_test(
 
     qa_classifier_saved = {}
     if do_ner == "qa_classifier":
-        assert getattr(args, 'qa_classifier_threshold', None) is not None
-        if args.qa_classifier_threshold == "top1":
+        assert qa_classifier_threshold is not None
+        if qa_classifier_threshold == "top1":
             do_top_1 = True
         else:
             do_top_1 = False
-            qa_classifier_threshold = float(args.qa_classifier_threshold)
+            qa_classifier_threshold = float(qa_classifier_threshold)
         if "webqsp.test" in test_filename:
             test_predictions_json = "/private/home/sviyer/datasets/webqsp/test_predictions.json"
         elif "webqsp.dev" in test_filename:
@@ -473,7 +492,7 @@ def __load_test(
 def _get_test_samples(
     test_filename, test_entities_path, title2id, kb2id, id2kb, logger,
     qa_data=False, do_ner="none", debug=False, main_entity_only=False, do_map_test_entities=True,
-    biencoder=None,
+    biencoder=None, qa_classifier_threshold=None,
 ):
     # TODO GET CORRECT IDS
     # if debug:
@@ -481,7 +500,7 @@ def _get_test_samples(
     if do_map_test_entities:
         kb2id, id2kb = __map_test_entities(test_entities_path, title2id, logger)
     test_samples, num_unk, sample_to_all_context_inputs = __load_test(
-        test_filename, kb2id, logger, args,
+        test_filename, kb2id, logger, qa_classifier_threshold,
         qa_data=qa_data, id2kb=id2kb, title2id=title2id,
         do_ner=do_ner, debug=debug, main_entity_only=main_entity_only,
         biencoder=biencoder,
@@ -562,8 +581,6 @@ def _run_biencoder(
             # # '''
 
             if not jointly_extract_mentions:
-                import pdb
-                pdb.set_trace()
                 scores, start_logits, end_logits = biencoder.score_candidate(
                     context_input, None,
                     cand_encs=candidate_encoding.to(device),
@@ -963,7 +980,7 @@ def run(
                 args.test_mentions, args.test_entities, title2id, kb2id, id2kb, logger,
                 qa_data=True, do_ner=args.do_ner, debug=args.debug_biencoder,
                 main_entity_only=args.eval_main_entity, do_map_test_entities=(len(kb2id) == 0),
-                biencoder=biencoder,
+                biencoder=biencoder, qa_classifier_threshold=getattr(args, 'qa_classifier_threshold', None),
             )
             logger.info("Finished loading test samples")
 
@@ -978,7 +995,7 @@ def run(
             # Load test mentions
             samples, _, _, _, sample_to_all_context_inputs = _get_test_samples(
                 args.test_mentions, args.test_entities, title2id, kb2id, id2kb, logger,
-                biencoder=biencoder,
+                biencoder=biencoder, qa_classifier_threshold=getattr(args, 'qa_classifier_threshold', None),
             )
             stopping_condition = True
 
@@ -1072,10 +1089,10 @@ def run(
                         entity_list = entity_list.tolist()
                         entity_list.sort(key=(lambda x: entity_freq_map.get(id2kb.get(x, ""), 0)), reverse=True)
                     e_id = entity_list[0]
-                    e_kbid = id2kb.get(e_id, "")
+                    e_kbid = id2kb.get(e_id, id2kb.get(str(e_id), ""))
                     pred_kbids_sorted = []
                     for all_id in entity_list:
-                        kbid = id2kb.get(all_id, "")
+                        kbid = id2kb.get(all_id, id2kb.get(str(e_id),""))
                         pred_kbids_sorted.append(kbid)
                     label = labels_merged[i]
                     sample = samples_merged[i]
@@ -1179,7 +1196,7 @@ def run(
                         # "text": e_text,
                         "pred_triples": pred_triples,
                         "gold_triples": gold_triples,
-                        "sorted_pred_KBids": [id2kb.get(e_id, "") for e_id in entity_list],
+                        "sorted_pred_KBids": [id2kb.get(e_id, id2kb.get(str(e_id),"")) for e_id in entity_list],
                         "input_mention_bounds": input,
                         "gold_mention_bounds": gold_mention_bounds,
                         "gold_KBid": sample['label'],
@@ -1384,8 +1401,8 @@ def run(
                     pred_kbids_sorted = []
                     pred_titles_sorted = []
                     for el_id in nns_merged[i]:
-                        kbid = id2kb.get(el_id, "")
-                        title = id2title.get(el_id, "")
+                        kbid = id2kb.get(el_id, id2kb.get(str(el_id), ""))
+                        title = id2title.get(el_id, id2title.get(str(el_id), ""))
                         pred_kbids_sorted.append(kbid)
                         pred_titles_sorted.append(title)
                         # sanity checks

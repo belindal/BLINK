@@ -1,6 +1,6 @@
 import nltk
 
-from vcg_utils import utils
+from blink.vcg_utils import utils
 
 
 class NgramNpParser:
