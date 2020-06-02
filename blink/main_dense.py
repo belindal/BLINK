@@ -31,7 +31,7 @@ from blink.crossencoder.data_process import prepare_crossencoder_data
 from blink.crossencoder.train_cross import modify, evaluate
 import math
 
-import blink.vcg_utils
+import blink.vcg_utils as vcg_utils
 from blink.vcg_utils.mention_extraction import extract_entities
 from blink.vcg_utils.measures import entity_linking_tp_with_overlap
 
@@ -252,7 +252,7 @@ def get_mention_bound_candidates(
         if len(samples) == 0:
             ner_errors += 1
             # sample_to_all_context_inputs.append([])
-            return None, None, saved_ngrams, sample_idx
+            return None, None, saved_ngrams, ner_errors, sample_idx
 
     elif do_ner == "single" or do_ner == "joint":
         # assume single mention boundary
