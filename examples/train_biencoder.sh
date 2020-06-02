@@ -45,6 +45,8 @@
 # sbatch examples/train_biencoder.sh pretrain none both 128 <true/false> 0
 # sbatch examples/train_biencoder.sh pretrain none predict 512 <true/false> 0
 # sbatch examples/train_biencoder.sh webqsp none train 64 false 16
+
+# sbatch examples/train_biencoder.sh webqsp all_avg train 64 true 20 true true
 data=$1  # webqsp/zeshel/pretrain
 mention_agg_type=$2  # all_avg/fl_avg/fl_linear/fl_mlp/none/none_no_mentions
 objective=$3  # train/predict/both (default)
@@ -52,9 +54,10 @@ batch_size=$4  # 128 (for pretraining large model / 128 seqlen) / 32 (for finetu
 joint_mention_detection=$5  # "true"/false
 context_length=$6
 load_saved_cand_encs=$7  # true/false
-chunk_start=$8
-chunk_end=$9
-epoch=${10}
+adversarial=$8  # true/false
+chunk_start=$9
+chunk_end=${10}
+epoch=${11}
 
 export PYTHONPATH=.
 
@@ -88,10 +91,16 @@ then
   all_mention_args="${all_mention_args} --do_mention_detection"
 fi
 
+cand_enc_args=""
 if [ "${load_saved_cand_encs}" = "true" ]
 then
   echo "loading + freezing saved candidate encodings"
-  cand_enc_args="--freeze_cand_enc --load_cand_enc_only --adversarial_training"
+  cand_enc_args="--freeze_cand_enc --load_cand_enc_only ${cand_enc_args}"
+fi
+
+if [ "${adversarial}" = "true" ]
+then
+  cand_enc_args="--adversarial_training ${cand_enc_args}"
 fi
 
 if [ "${objective}" = "" ]
@@ -118,7 +127,7 @@ then
     then
       batch_size="128"
     fi
-    output_path="experiments/pretrain/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}"
+    output_path="experiments/pretrain/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
     if [ "${epoch}" != "-1" ]
     then
       model_path_arg="--path_to_model ${output_path}/epoch_${epoch}/pytorch_model.bin --path_to_trainer_state ${output_path}/epoch_${epoch}/training_state.th"
@@ -147,8 +156,9 @@ then
     then
       batch_size="32"
     fi
+    model_path_arg=""
     #--load_cand_enc_only \
-    output_path="experiments/${data}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}"
+    output_path="experiments/${data}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
     if [ "${epoch}" != "-1" ]
     then
       model_path_arg="--path_to_model ${output_path}/epoch_${epoch}/pytorch_model.bin --path_to_trainer_state ${output_path}/epoch_${epoch}/training_state.th"
@@ -157,11 +167,16 @@ then
         cand_enc_args="--freeze_cand_enc --adversarial_training"
       fi
     else
-      model_path_arg="--path_to_model /private/home/ledell/BLINK-Internal/models/biencoder_wiki_large.bin"
+      if [ "${load_saved_cand_encs}" = "true" ]
+      then
+        model_path_arg="--path_to_model /private/home/ledell/BLINK-Internal/models/biencoder_wiki_large.bin"
+      fi
     fi
+    #--freeze_cand_enc  
     python blink/biencoder/train_biencoder.py \
       --output_path $output_path \
-      ${model_path_arg} --freeze_cand_enc  ${cand_enc_args} \
+      ${model_path_arg} \
+      ${cand_enc_args} \
       --no_cached_representation --dont_distribute_train_samples \
       --data_path ${data_path} \
       --num_train_epochs 100 \
