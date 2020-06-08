@@ -127,7 +127,7 @@ then
     then
       batch_size="128"
     fi
-    output_path="experiments/pretrain/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
+    output_path="/checkpoint/belindali/entity_link/saved_models/pretrain/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
     if [ "${epoch}" != "-1" ]
     then
       model_path_arg="--path_to_model ${output_path}/epoch_${epoch}/pytorch_model.bin --path_to_trainer_state ${output_path}/epoch_${epoch}/training_state.th"
@@ -158,7 +158,7 @@ then
     fi
     model_path_arg=""
     #--load_cand_enc_only \
-    output_path="experiments/${data}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
+    output_path="/checkpoint/belindali/entity_link/saved_models/${data}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}_${load_saved_cand_encs}_${adversarial}"
     if [ "${epoch}" != "-1" ]
     then
       model_path_arg="--path_to_model ${output_path}/epoch_${epoch}/pytorch_model.bin --path_to_trainer_state ${output_path}/epoch_${epoch}/training_state.th"
@@ -195,9 +195,9 @@ fi
 
 # echo "Running ${mention_agg_type} biencoder full evaluation on ${data} dataset."
 # python blink/biencoder/eval_biencoder.py \
-#   --path_to_model experiments/${data}/biencoder_${mention_agg_type}/pytorch_model.bin \
+#   --path_to_model /checkpoint/belindali/entity_link/saved_models/${data}/biencoder_${mention_agg_type}/pytorch_model.bin \
 #   --data_path ${data_path} \
-#   --output_path experiments/nn_preds \
+#   --output_path /checkpoint/belindali/entity_link/saved_models/nn_preds \
 #   --encode_batch_size ${batch_size} \
 #   --bert_model bert-large-uncased
 
@@ -214,18 +214,18 @@ then
   
   directory=${data}
 
-  model_config=experiments/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/training_params.txt
+  model_config=/checkpoint/belindali/entity_link/saved_models/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/training_params.txt
   save_dir=models/entity_encodings/${directory}_${mention_agg_type}_biencoder_${joint_mention_detection}_${context_length}
   if [ "${data}" = "pretrain" ]
   then
-    model_path=experiments/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/epoch_${epoch}/pytorch_model.bin  # TODO REVISE THIS LATER
+    model_path=/checkpoint/belindali/entity_link/saved_models/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/epoch_${epoch}/pytorch_model.bin  # TODO REVISE THIS LATER
     save_dir=models/entity_encodings/${directory}_${mention_agg_type}_biencoder_${joint_mention_detection}_${context_length}_${epoch}
   elif [ "${data}" = "zero_shot" ]
   then
     model_path=models/biencoder_wiki_large.bin
     model_config=models/biencoder_wiki_large.json
   else
-    model_path=experiments/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/pytorch_model.bin
+    model_path=/checkpoint/belindali/entity_link/saved_models/${directory}/biencoder_${mention_agg_type}_${joint_mention_detection}_${context_length}/pytorch_model.bin
   fi
   mkdir -p save_dir
   chmod 777 save_dir

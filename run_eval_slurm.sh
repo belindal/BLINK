@@ -21,6 +21,7 @@
 # bash run_eval_slurm.sh 64 webqsp_filtered zeshel_none_biencoder qa_classifier dev false 0 false
 # bash run_eval_slurm.sh 64 webqsp_filtered pretrain_none_biencoder qa_classifier dev false 0 false
 # bash run_eval_slurm.sh 64 webqsp_filtered pretrain_all_avg_biencoder qa_classifier dev false 0 false
+# bash run_eval_slurm.sh 64 webqsp_filtered 'finetuned_webqsp;biencoder_none_false_128_true' qa_classifier dev false 0 false;
 eval_batch_size=$1  # 64
 test_questions=$2  # webqsp_filtered/nq/graphqs_filtered
 model_full=$3  # zero_shot/new_zero_shot/finetuned_webqsp/finetuned_graphqs/webqsp_none_biencoder/zeshel_none_biencoder/pretrain_all_avg_biencoder/
@@ -86,8 +87,8 @@ then
     then
         model_folder=${MODEL_PARSE[1]}/epoch_${epoch}
     fi
-    biencoder_config=experiments/webqsp/${MODEL_PARSE[1]}/training_params.txt
-    biencoder_model=experiments/webqsp/${model_folder}/pytorch_model.bin
+    biencoder_config=/checkpoint/belindali/entity_link/saved_models/webqsp/${MODEL_PARSE[1]}/training_params.txt
+    biencoder_model=/checkpoint/belindali/entity_link/saved_models/webqsp/${model_folder}/pytorch_model.bin
     entity_encoding=/private/home/belindali/BLINK/models/all_entities_large.t7
     crossencoder_config=models/crossencoder_wiki_large.json  # TODO CHANGE!!! (not fintuned yet...)
     crossencoder_model=models/crossencoder_wiki_large.bin  # TODO CHANGE!!! (not fintuned yet...)
