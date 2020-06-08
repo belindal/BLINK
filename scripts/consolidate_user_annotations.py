@@ -190,84 +190,84 @@ def get_missing_set():
 
 # 1182 in test webqsp, changed entity
 def consolidate_mention_bounds():
-    # load webqsp
-    for subset in ["train", "dev", "test"]:
-        with_classes = ""
-        if subset == "test":
-            with_classes = ".with_classes"
-        fn = "/private/home/belindali/starsem2018-entity-linking/data/WebQSP/input/webqsp.{}.entities{}.json".format(subset, with_classes)
-        with open(fn) as f:
-            webqsp_subset = json.load(f)
-        annot_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/annotated/{}_{}.json".format(subset, 'webqsp')
-        predicted_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/predicted_bounds_{}_{}.json".format(subset, 'webqsp')
-        missing_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/annotated/{}_{}_to_check.json".format(subset, 'webqsp')
-        annotations = json.load(open(annot_fn))
-        predicted_annots = json.load(open(predicted_fn))
-        missing_predicted_annots = json.load(open(missing_fn))
-        revised_examples = []
-        nones = []
-        for i in range(len(webqsp_subset)):
-            mention_bounds = []
-            new_ents_list = []
-            for j in range(len(webqsp_subset[i]['entities'])):
-                target_id = webqsp_subset[i]['entities'][j]
-                if target_id == webqsp_subset[i]['main_entity']:
-                    mention_bounds.append(webqsp_subset[i]['main_entity_pos'])
-                    new_ents_list.append(webqsp_subset[i]['entities'][j])
-                elif target_id in FILTER_ENTITY_SET or target_id == None:
-                    if target_id == None:
-                        nones.append(i)
-                    annot_q = None
-                elif target_id != webqsp_subset[i]['main_entity']:  # and match is not None:
-                    if str(i) not in annotations:
-                        if str(i) in predicted_annots:
-                            # skip, as has exact lexical overlap
-                            annot_q = predicted_annots[str(i)]["question_with_hypothesis"]
-                        elif str(i) in missing_predicted_annots:
-                            annot_q = missing_predicted_annots[str(i)]["question"]
-                        else:
-                            # delete entity
-                            print("DELETING {} in example {}: {}".format(target_id, i, webqsp_subset[i]['utterance']))
-                            x = None
-                            while x != "del" and x != "n":
-                                x = input("del/n: ")
-                            if x == "del":
-                                annot_q = None
-                            elif x == "n":
-                                annot_q = ""
-                                while "[" not in annot_q:
-                                    annot_q = input("corrected question?: ")
-                    else:
-                        if '[' in annotations[str(i)]['question']:
-                            annot_q = annotations[str(i)]['question']
-                        elif str(i) not in missing_predicted_annots:
-                            print("DELETING {} in example {}: {}".format(target_id, i, webqsp_subset[i]['utterance']))
-                            annot_q = None
-                        elif '[' in missing_predicted_annots[str(i)]["question"]:
-                            annot_q = missing_predicted_annots[str(i)]["question"]
-                        else:
-                            raise AssertionError
+    # # load webqsp
+    # for subset in ["train", "dev", "test"]:
+    #     with_classes = ""
+    #     if subset == "test":
+    #         with_classes = ".with_classes"
+    #     fn = "/private/home/belindali/starsem2018-entity-linking/data/WebQSP/input/webqsp.{}.entities{}.json".format(subset, with_classes)
+    #     with open(fn) as f:
+    #         webqsp_subset = json.load(f)
+    #     annot_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/annotated/{}_{}.json".format(subset, 'webqsp')
+    #     predicted_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/predicted_bounds_{}_{}.json".format(subset, 'webqsp')
+    #     missing_fn = "/private/home/belindali/BLINK/to_annotate_mention_bound/annotated/{}_{}_to_check.json".format(subset, 'webqsp')
+    #     annotations = json.load(open(annot_fn))
+    #     predicted_annots = json.load(open(predicted_fn))
+    #     missing_predicted_annots = json.load(open(missing_fn))
+    #     revised_examples = []
+    #     nones = []
+    #     for i in range(len(webqsp_subset)):
+    #         mention_bounds = []
+    #         new_ents_list = []
+    #         for j in range(len(webqsp_subset[i]['entities'])):
+    #             target_id = webqsp_subset[i]['entities'][j]
+    #             if target_id == webqsp_subset[i]['main_entity']:
+    #                 mention_bounds.append(webqsp_subset[i]['main_entity_pos'])
+    #                 new_ents_list.append(webqsp_subset[i]['entities'][j])
+    #             elif target_id in FILTER_ENTITY_SET or target_id == None:
+    #                 if target_id == None:
+    #                     nones.append(i)
+    #                 annot_q = None
+    #             elif target_id != webqsp_subset[i]['main_entity']:  # and match is not None:
+    #                 if str(i) not in annotations:
+    #                     if str(i) in predicted_annots:
+    #                         # skip, as has exact lexical overlap
+    #                         annot_q = predicted_annots[str(i)]["question_with_hypothesis"]
+    #                     elif str(i) in missing_predicted_annots:
+    #                         annot_q = missing_predicted_annots[str(i)]["question"]
+    #                     else:
+    #                         # delete entity
+    #                         print("DELETING {} in example {}: {}".format(target_id, i, webqsp_subset[i]['utterance']))
+    #                         x = None
+    #                         while x != "del" and x != "n":
+    #                             x = input("del/n: ")
+    #                         if x == "del":
+    #                             annot_q = None
+    #                         elif x == "n":
+    #                             annot_q = ""
+    #                             while "[" not in annot_q:
+    #                                 annot_q = input("corrected question?: ")
+    #                 else:
+    #                     if '[' in annotations[str(i)]['question']:
+    #                         annot_q = annotations[str(i)]['question']
+    #                     elif str(i) not in missing_predicted_annots:
+    #                         print("DELETING {} in example {}: {}".format(target_id, i, webqsp_subset[i]['utterance']))
+    #                         annot_q = None
+    #                     elif '[' in missing_predicted_annots[str(i)]["question"]:
+    #                         annot_q = missing_predicted_annots[str(i)]["question"]
+    #                     else:
+    #                         raise AssertionError
 
-                    if annot_q is not None:
-                        new_ents_list.append(webqsp_subset[i]['entities'][j])
-                        mention_bounds.append([annot_q.find('['), annot_q.find(']')-1])
-                        assert annot_q[annot_q.find('[')+1:annot_q.find(']')] == webqsp_subset[i]['utterance'][
-                            mention_bounds[-1][0]:mention_bounds[-1][1]
-                        ]
+    #                 if annot_q is not None:
+    #                     new_ents_list.append(webqsp_subset[i]['entities'][j])
+    #                     mention_bounds.append([annot_q.find('['), annot_q.find(']')-1])
+    #                     assert annot_q[annot_q.find('[')+1:annot_q.find(']')] == webqsp_subset[i]['utterance'][
+    #                         mention_bounds[-1][0]:mention_bounds[-1][1]
+    #                     ]
 
-            try:
-                assert len(mention_bounds) == len(new_ents_list)
-            except:
-                pdb.set_trace()
-            if len(new_ents_list) > 0:
-                new_ex_copy = copy.deepcopy(webqsp_subset[i])
-                new_ex_copy['entities'] = new_ents_list
-                new_ex_copy['entities_pos'] = mention_bounds
-                revised_examples.append(new_ex_copy)
+    #         try:
+    #             assert len(mention_bounds) == len(new_ents_list)
+    #         except:
+    #             pdb.set_trace()
+    #         if len(new_ents_list) > 0:
+    #             new_ex_copy = copy.deepcopy(webqsp_subset[i])
+    #             new_ex_copy['entities'] = new_ents_list
+    #             new_ex_copy['entities_pos'] = mention_bounds
+    #             revised_examples.append(new_ex_copy)
 
-        print(fn)
-        print(nones)
-        json.dump(revised_examples, open(fn[:len(fn)-len(".json")] + ".all_pos.json", "w"), indent=2)
+    #     print(fn)
+    #     print(nones)
+    #     json.dump(revised_examples, open(fn[:len(fn)-len(".json")] + ".all_pos.json", "w"), indent=2)
 
     # graphqs
     for subset in ["train", "test"]:
@@ -282,10 +282,14 @@ def consolidate_mention_bounds():
         predicted_annots = json.load(open(predicted_fn))
         missing_predicted_annots = json.load(open(missing_fn))
         revised_examples = []
+        nones = []
         for i in range(len(graphqs_subset)):
             mention_bounds = []
             new_ents_list = []
             for j in range(len(graphqs_subset[i]['entities'])):
+                if j > 0:
+                    import pdb
+                    pdb.set_trace()
                 target_id = graphqs_subset[i]['entities'][j]
                 if target_id in FILTER_ENTITY_SET or target_id == None:
                     if target_id == None:
