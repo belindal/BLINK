@@ -22,6 +22,7 @@ SAVE_PREDS_DIR = "/checkpoint/belindali/entity_link/saved_preds/webqsp_filtered_
 
 SAVE_PREDS_DIR = "/checkpoint/belindali/entity_link/saved_preds/webqsp_filtered_dev_finetuned_webqsp_all_ents;all_mention_biencoder_all_avg_true_20_true_bert_large_qa_linear_joint0.2_top8cands_final_joint_0/"
 
+SAVE_PREDS_DIR = "/checkpoint/belindali/entity_link/saved_preds/webqsp_filtered_dev_finetuned_webqsp_all_ents;all_mention_biencoder_all_avg_true_20_true_true_bert_large_qa_orig_joint0.25_top100cands_final_joint_0"
 
 (dists, cand_dists, mention_dists, labels, nns, runtime, new_samples, sample_to_all_context_inputs, samples_all) = load_files(SAVE_PREDS_DIR)
 (dists_top10, cand_dists_top10, mention_dists_top10, _, nns_top10, _, _, _, samples_all_top10) = load_files(SAVE_PREDS_DIR)
@@ -64,8 +65,9 @@ C = [i * 0.1 + 2 for i in range(20)]
 for c in C:
 new_samples_merged, labels_merged, nns_merged, dists_merged, entity_mention_bounds_idx, no_pred_indices = _combine_same_inputs_diff_mention_bounds(
     new_samples, labels, nns,
+    cand_dists + mention_dists,
     # 0.2 * cand_dists[:,:10] + mention_dists[:,:10],
-    torch.log_softmax(torch.tensor(cand_dists),1).numpy() + torch.sigmoid(torch.tensor(mention_dists)).numpy(),
+    # torch.log_softmax(torch.tensor(cand_dists),1).numpy() + torch.sigmoid(torch.tensor(mention_dists)).numpy(),
     # a * cand_dists + b * mention_dists + c,
     # 0.4 * cand_dists + mention_dists + 0.9,
     sample_to_all_context_inputs,

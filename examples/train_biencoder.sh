@@ -1,7 +1,7 @@
 #!/bin/sh
 #SBATCH --output=log/%j.out
 #SBATCH --error=log/%j.err
-#SBATCH --partition=priority
+#SBATCH --partition=learnfair
 #SBATCH --comment=emnlpdeadline06/01
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

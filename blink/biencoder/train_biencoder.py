@@ -92,7 +92,7 @@ def evaluate(
 
             if params["freeze_cand_enc"]:
                 # get mention encoding
-                embedding_context, mention_logits, mention_bounds = reranker.encode_context(
+                embedding_context, mention_logits, mention_bounds, _, _ = reranker.encode_context(
                     context_input, gold_mention_idxs=mention_idxs, #topK_mention=1,
                     topK_threshold=0.5,
                 )
@@ -135,7 +135,7 @@ def evaluate(
                 if mention_idxs is None:
                     mention_idx_mask = None
                 embedding_context = None
-                logits, mention_logits, mention_bounds = reranker(
+                logits, mention_logits, mention_bounds, start_logits, end_logits = reranker(
                     context_input, candidate_input,
                     cand_encs=cand_encs,# label_input=label_ids,
                     gold_mention_idxs=batch[-2],
@@ -462,7 +462,7 @@ def main(params):
                 # pos_cand_encs_input_reconstruct[mention_idx_mask] = pos_cand_encs_input
                 # pos_cand_encs_input = pos_cand_encs_input_reconstruct
 
-                mention_reps, mention_logits, mention_bounds = reranker.encode_context(
+                mention_reps, mention_logits, mention_bounds, start_logits, end_logits = reranker.encode_context(
                     context_input, gold_mention_idxs=mention_idxs,
                 )
                 # mention_reps: (bs, max_num_spans, embed_size) -> masked_mention_reps: (bs * num_spans [masked], embed_size)
@@ -529,6 +529,7 @@ def main(params):
                 context_input, candidate_input,
                 cand_encs=cand_encs_input, text_encs=mention_reps_input,
                 mention_logits=mention_logits, mention_bounds=mention_bounds,
+                start_logits=start_logits, end_logits=end_logits,
                 label_input=label_input, gold_mention_idxs=mention_idxs,
                 gold_mention_idx_mask=mention_idx_mask,
                 all_inputs_mask=all_inputs_mask,

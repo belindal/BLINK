@@ -373,6 +373,8 @@ def __load_test(
             test_predictions_json = "/private/home/sviyer/datasets/webqsp/dev_predictions.json"
         elif "graph.test" in test_filename:
             test_predictions_json = "/private/home/sviyer/datasets/graphquestions/test_predictions.json"
+        elif "nq_dev" in test_filename:
+            test_predictions_json = "/private/home/sviyer/datasets/nq/dev_predictions.json"
         with open(test_predictions_json) as f:
             for line in f:
                 line_json = json.loads(line)
@@ -584,7 +586,7 @@ def _run_biencoder(
                 gold_mention_idx_mask = torch.ones(mention_idxs.size()[:2], dtype=torch.bool)
                 import pdb
                 pdb.set_trace()
-                scores, mention_logits, mention_bounds = biencoder.score_candidate(
+                scores, mention_logits, mention_bounds, _, _ = biencoder.score_candidate(
                     context_input, None,
                     cand_encs=candidate_encoding.to(device),
                     gold_mention_idxs=mention_idxs.to(device),
@@ -596,41 +598,18 @@ def _run_biencoder(
                 context_encoding, _, _ = biencoder.model.context_encoder.bert_model(
                     token_idx_ctxt, segment_idx_ctxt, mask_ctxt,  # what is segment IDs?
                 )
-                mention_logits, mention_bounds = biencoder.model.classification_heads['mention_scores'](context_encoding, mask_ctxt)
+                mention_logits, mention_bounds, _, _ = biencoder.model.classification_heads['mention_scores'](context_encoding, mask_ctxt)
 
-                # # # get top K mentions
-                # # # DIM (bsz, K)
-                # # mention_scores[(~valid_mask).view(valid_mask.size(0), -1)] = -float("inf")
-                # topK_mention_scores, topK_mention_idxs = mention_scores.topk(num_mentions, dim=1, sorted=True)
-                # # torch.gather(valid_mask.view(valid_mask.size(0), -1), 1, topK_mention_idxs)
-                # # DIM (bsz, K, 2)
-                # topK_mention_bounds = torch.stack([torch.gather(mention_bounds[:,:,0], 1, topK_mention_idxs), torch.gather(mention_bounds[:,:,1], 1, topK_mention_idxs)], dim=-1)
-                # # DIM (bsz * K, max_seqlen, embed_size) --> dim0 = [i0, ...(xK)..., i0, i1, ...(xK)..., i1, etc.]
-                # context_encoding = context_encoding.unsqueeze(1).expand(
-                #     context_encoding.size(0), topK_mention_idxs.size(1),
-                #     context_encoding.size(1), context_encoding.size(2),
-                # )
-                # context_encoding = context_encoding.reshape(-1, context_encoding.size(2), context_encoding.size(3))
-                # # DIM (bsz * K, 2) --> dim0 = [i0m1,..., i0mK, i1m1, ..., i1mK, etc.]
-                # topK_mention_bounds_flattened = topK_mention_bounds.view(-1, 2)
-                # # DIM (bsz * K)
-                # topK_mention_scores_flattened = topK_mention_scores.flatten()
-
-                '''
-                topK_mention_scores, mention_pos = torch.cat([torch.arange(), mention_logits.topk(top_k, dim=1)])
-                mention_pos = mention_pos.flatten()
-                '''
                 # DIM (num_total_mentions, embed_dim)
                 # mention_pos = (torch.sigmoid(mention_logits) >= mention_classifier_threshold).nonzero()
-                # import pdb
-                # pdb.set_trace()
                 # start_time = time.time()
                 # mention_pos = (torch.sigmoid(mention_logits) >= 0.2).nonzero()
                 # end_time = time.time()
                 top_mention_logits, mention_pos_2 = mention_logits.topk(top_k)
                 # 2nd part of OR for if nothing is > 0
                 mention_pos_2 = torch.stack([torch.arange(mention_pos_2.size(0)).unsqueeze(-1).expand_as(mention_pos_2), mention_pos_2], dim=-1)
-                mention_pos_2_mask = torch.sigmoid(top_mention_logits) >= mention_classifier_threshold
+                mention_pos_2_mask = top_mention_logits >= 0
+                # mention_pos_2_mask = torch.sigmoid(top_mention_logits) >= mention_classifier_threshold
                 # [overall mentions, 2]
                 mention_pos_2 = mention_pos_2[mention_pos_2_mask | (mention_pos_2_mask.sum(1) == 0).unsqueeze(-1)]
                 mention_pos_2 = mention_pos_2.view(-1, 2)
@@ -702,8 +681,10 @@ def _run_biencoder(
                     # scores += torch.sigmoid(mention_logits)[mention_pos_mask].unsqueeze(-1)
                     mention_scores = mention_logits[mention_pos_mask].unsqueeze(-1)
                 # DIM (num_total_mentions, num_candidates)
+                # TODO VARIOUS SCORES OPTIONS
                 # scores = torch.log_softmax(cand_scores, 1) + torch.sigmoid(mention_scores)
-                scores = cand_scores + torch.sigmoid(mention_scores)
+                # scores = cand_scores + torch.sigmoid(mention_scores)
+                scores = cand_scores + mention_scores
                 # import pdb
                 # pdb.set_trace()
                 mention_scores = mention_scores.expand_as(cand_scores)
