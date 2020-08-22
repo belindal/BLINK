@@ -12,6 +12,7 @@ from tqdm import tqdm
 import logging
 import torch
 import numpy as np
+import math
 from colorama import init
 from termcolor import colored
 
@@ -27,6 +28,8 @@ import blink.candidate_ranking.utils as utils
 from blink.crossencoder.train_cross import modify, evaluate
 from blink.crossencoder.data_process import prepare_crossencoder_data
 from blink.index.faiss_indexer import DenseFlatIndexer, DenseHNSWFlatIndexer
+
+from vcg_measures import entity_linking_tp_with_overlap
 
 
 HIGHLIGHTS = [
@@ -93,6 +96,36 @@ def _annotate(ner_model, input_sentences):
         record["sent_idx"] = mention["sent_idx"]
         samples.append(record)
     return samples
+
+
+def _qa_annotate(args):
+    qa_classifier_saved = {}
+    if args.mention_classifier_threshold == "top1":
+        do_top_1 = True
+    else:
+        do_top_1 = False
+        threshold = float(args.mention_classifier_threshold)
+    if "WebQSP_EL/test" in args.test_mentions:
+        test_predictions_json = "/private/home/sviyer/datasets/webqsp/test_predictions.json"
+    elif "WebQSP_EL/dev" in args.test_mentions:
+        test_predictions_json = "/private/home/sviyer/datasets/webqsp/dev_predictions.json"
+    elif "graphquestions_EL/test" in args.test_mentions:
+        test_predictions_json = "/private/home/sviyer/datasets/graphquestions/test_predictions.json"
+    with open(test_predictions_json) as f:
+        for line in f:
+            line_json = json.loads(line)
+            all_ex_preds = []
+            for i, pred in enumerate(line_json['all_predictions']):
+                if "graphquestions/test" in test_predictions_json:
+                    pred['logit'][1] = math.log(pred['logit'][1])
+                if (
+                    (do_top_1 and i == 0) or 
+                    (not do_top_1 and pred['logit'][1] > 0.0)
+                ):
+                    all_ex_preds.append(pred)
+            assert '1' in line_json['predictions']
+            qa_classifier_saved[line_json['id']] = all_ex_preds
+    return qa_classifier_saved
 
 
 def _load_candidates(
@@ -169,8 +202,10 @@ def __map_test_entities(test_entities_path, title2id, logger):
     return kb2id
 
 
-def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
+def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger, qa_mention_cands=None):
     test_samples = []
+    samples_idx = 0
+    id_to_sample_map = {}
     with open(test_filename, "r") as fin:
         lines = fin.readlines()
         for line in lines:
@@ -185,7 +220,7 @@ def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
                     continue
 
             # check that each entity id (label_id) is in the entity collection
-            elif wikipedia_id2local_id and len(wikipedia_id2local_id) > 0:
+            elif not qa_mention_cands and wikipedia_id2local_id and len(wikipedia_id2local_id) > 0:
                 try:
                     key = int(record["label"].strip())
                     if key in wikipedia_id2local_id:
@@ -196,24 +231,45 @@ def __load_test(test_filename, kb2id, wikipedia_id2local_id, logger):
                     continue
 
             # LOWERCASE EVERYTHING !
-            record["context_left"] = record["context_left"].lower()
-            record["context_right"] = record["context_right"].lower()
-            record["mention"] = record["mention"].lower()
-            test_samples.append(record)
+            if qa_mention_cands:
+                record_contexts = qa_mention_cands[record["id"]]
+                records = []
+                id_to_sample_map[record['id']] = []
+                for rc in record_contexts:
+                    left_end = rc['passage'].find("<answer>")
+                    right_start = rc['passage'].find("</answer>") + len("</answer>")
+                    new_rc = {
+                        "context_left": rc['passage'][:left_end].lower(), 
+                        "context_right": rc['passage'][right_start:].lower(),
+                        "mention": rc['text'].lower(),
+                        **record,
+                    }
+                    records.append(new_rc)
+                    id_to_sample_map[record['id']].append(samples_idx)
+                    samples_idx += 1
+                test_samples += records
+            else:
+                record["context_left"] = record["context_left"].lower()
+                record["context_right"] = record["context_right"].lower()
+                record["mention"] = record["mention"].lower()
+                test_samples.append(record)
 
     if logger:
         logger.info("{}/{} samples considered".format(len(test_samples), len(lines)))
-    return test_samples
+    return test_samples, id_to_sample_map
 
 
 def _get_test_samples(
-    test_filename, test_entities_path, title2id, wikipedia_id2local_id, logger
+    args, test_filename, test_entities_path, title2id, wikipedia_id2local_id, logger
 ):
     kb2id = None
     if test_entities_path:
         kb2id = __map_test_entities(test_entities_path, title2id, logger)
-    test_samples = __load_test(test_filename, kb2id, wikipedia_id2local_id, logger)
-    return test_samples
+    qa_mention_cands = None
+    if args.mention_classifier == "qa":
+        qa_mention_cands = _qa_annotate(args)
+    test_samples, id_to_sample_map = __load_test(test_filename, kb2id, wikipedia_id2local_id, logger, qa_mention_cands)
+    return test_samples, id_to_sample_map
 
 
 def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
@@ -387,7 +443,8 @@ def run(
                 samples = test_data
             else:
                 # Load test mentions
-                samples = _get_test_samples(
+                samples, id_to_sample_map = _get_test_samples(
+                    args,
                     args.test_mentions,
                     args.test_entities,
                     title2id,
@@ -401,7 +458,10 @@ def run(
         keep_all = (
             args.interactive
             or samples[0]["label"] == "unknown"
-            or samples[0]["label_id"] < 0
+            or (
+                type(samples[0]["label_id"]) != list
+                and samples[0]["label_id"] < 0
+            )
         )
 
         # prepare the data for biencoder
@@ -413,6 +473,7 @@ def run(
         # run biencoder
         logger.info("run biencoder")
         top_k = args.top_k
+        # for loop for each mention
         labels, nns, scores = _run_biencoder(
             biencoder, dataloader, candidate_encoding, top_k, faiss_indexer
         )
@@ -467,12 +528,38 @@ def run(
             if args.fast:
 
                 predictions = []
-                for entity_list in nns:
+                sample_ids = {}
+                for s in samples:
+                    if s['id'] not in sample_ids:
+                        sample_ids[s["id"]] = []
+                    sample_ids[s["id"]].append(s)
+                num_overlap = 0
+                num_preds = 0
+                num_gold = 0
+                for Id in sample_ids:
+                    sample = sample_ids[Id]
                     sample_prediction = []
-                    for e_id in entity_list:
-                        e_title = id2title[e_id]
-                        sample_prediction.append(e_title)
+                    preds = []
+                    for n, nn_idx in enumerate(id_to_sample_map[Id]):
+                        sample_prediction.append([])
+                        entity_list = nns[nn_idx]
+                        for e_id in entity_list:
+                            e_title = id2title[e_id]
+                            sample_prediction[n].append(e_title)
+                        preds.append([str(entity_list[0]), len(sample[n]['context_left']), len(sample[n]['context_left']) + len(sample[n]['mentions'])])
                     predictions.append(sample_prediction)
+                    sample = sample[0]
+                    ls = [[str(sample['label_id'][l]), sample['mentions'][l][0], sample['mentions'][l][1]] for l in range(len(sample['label_id']))]
+                    # get overlaps
+                    num_overlap += entity_linking_tp_with_overlap(ls, preds)[0]
+                    num_preds += len(preds)
+                    num_gold += len(ls)
+
+                p = float(num_overlap) / float(num_preds)
+                r = float(num_overlap) / float(num_gold)
+                print(p)
+                print(r)
+                print(2 * p * r / (p + r))
 
                 # use only biencoder
                 return (
@@ -671,10 +758,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--index_path", type=str, default=None, help="path to load indexer",
     )
+    parser.add_argument(
+        "--mention_classifier", type=str, default=None, help="which mention classifier to use",
+        choices=["qa", None, "flair"],
+    )
+    parser.add_argument(
+        "--mention_classifier_threshold", type=str, default="0.0", help="threshold for mention classifier",
+    )
 
     args = parser.parse_args()
 
     logger = utils.get_logger(args.output_path)
 
     models = load_models(args, logger)
-    run(args, logger, *models)
+    outs = run(args, logger, *models)
+    predictions = outs[-2]
+    json.dump(predictions, open("output/predictions.json", "w"))

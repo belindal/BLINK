@@ -138,10 +138,18 @@ def process_mention_data(
 
         label = sample[label_key]
         title = sample.get(title_key, None)
+        if type(label) == list:
+            label = label[0]
+        if type(title) == list:
+            title = title[0]
+
         label_tokens = get_candidate_representation(
             label, tokenizer, max_cand_length, title,
         )
-        label_idx = int(sample["label_id"])
+        if type(sample["label_id"]) == list:
+            label_idx = int(sample["label_id"][0])
+        else:
+            label_idx = int(sample["label_id"])
 
         record = {
             "context": context_tokens,
