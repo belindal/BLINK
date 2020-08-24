@@ -285,7 +285,7 @@ def _process_biencoder_dataloader(samples, tokenizer, biencoder_params):
     )
     sampler = SequentialSampler(tensor_data)
     dataloader = DataLoader(
-        tensor_data, sampler=sampler, batch_size=biencoder_params["eval_batch_size"]
+        tensor_data, sampler=sampler, batch_size=getattr(args, 'batch_size', biencoder_params["eval_batch_size"])
     )
     return dataloader
 
@@ -769,6 +769,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--mention_classifier_threshold", type=str, default="0.0", help="threshold for mention classifier",
+    )
+    parser.add_argument(
+        "--batch_size", type=int, help="batch size for inference",
     )
 
     args = parser.parse_args()
