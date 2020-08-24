@@ -10,6 +10,7 @@ import sys
 
 from tqdm import tqdm
 import logging
+import time
 import torch
 import numpy as np
 import math
@@ -473,10 +474,13 @@ def run(
         # run biencoder
         logger.info("run biencoder")
         top_k = args.top_k
+        start = time.time()
         # for loop for each mention
         labels, nns, scores = _run_biencoder(
             biencoder, dataloader, candidate_encoding, top_k, faiss_indexer
         )
+        end = time.time()
+        total_time = (end - start)
 
         if args.interactive:
 
@@ -560,6 +564,7 @@ def run(
                 print(p)
                 print(r)
                 print(2 * p * r / (p + r))
+                print("Runtime: " + str(total_time))
 
                 # use only biencoder
                 return (
