@@ -46,28 +46,16 @@ python blink/main_dense.py -i --biencoder_model models/elq_wiki_large.bin
 ## Training
 ### Train on WebQSP
 ```console
-sbatch train_biencoder.sh webqsp_all_ents all_avg train 128 20 true true large qa_linear
+sbatch train_biencoder.sh webqsp all_avg train 128 20 true true large qa_linear
 ```
 Saves under
 ```
 experiments/webqsp/all_avg_20_true_true_bert_large_qa_linear
 ```
 
-### Finetune on WebQSP
-1. Copy pretraining checkpoint directory `experiments/wiki_all_ents/*/epoch_*` to `experiments/webqsp_all_ents/all_mention_biencoder_all_avg_true_32_true_true_bert_large_qa_linear/epoch_0`
-2. Delete the saved trainer state (to reset trainer from scratch): `rm experiments/webqsp_all_ents/all_mention_biencoder_all_avg_true_32_true_true_bert_large_qa_linear/epoch_0/training_state.th`
-3. Run:
-```console
-sbatch train_biencoder.sh webqsp_all_ents all_avg train 32 128 true true large qa_linear 0 -1 0
-```
-Saves under
-```
-experiments/webqsp_all_ents/all_mention_biencoder_all_avg_128_true_true_bert_large_qa_linear
-```
-
 ### Train on Wikipedia
 ```console
-sbatch train_biencoder.sh wiki_all_ents all_avg train 32 128 true true large qa_linear 0 -1 22 64
+sbatch train_biencoder.sh /checkpoint/belindali/entity_link/data/wiki_all_ents all_avg train 32 128 true true large qa_linear 0 -1 22 64
 sbatch train_biencoder.sh wiki_all_ents all_avg train 32 128 false false large qa_linear 0 -1 3 64
 sbatch train_biencoder.sh wiki_all_ents all_avg train 32 128 false false base qa_linear 0 -1 10 64
 ```
@@ -77,6 +65,15 @@ Saves under
 experiments/wiki_all_ents/all_avg_128_true_true_bert_large_qa_linear
 experiments/wiki_all_ents/all_avg_128_false_false_bert_large_qa_linear
 experiments/wiki_all_ents/all_avg_128_false_false_bert_base_qa_linear
+```
+
+### Finetune on WebQSP
+```console
+sbatch train_biencoder.sh webqsp all_avg finetune 32 128 true true large qa_linear 0 -1 0 64 /checkpoint/belindali/entity_link/data/wiki_all_ents ${base_epoch}
+```
+Saves under
+```
+experiments/webqsp_ft_wiki_all_ents_${base_epoch}/all_mention_biencoder_all_avg_128_true_true_bert_large_qa_linear
 ```
 
 
@@ -95,9 +92,9 @@ Saves under `experiments/wiki_all_ents/all_avg_128_false_false_bert_base_qa_line
 ## Evaluation
 Zero-shot from Wikipedia
 ```console
-CUDA_VISIBLE_DEVICES=0 bash run_eval_slurm.sh WebQSP_EL test 'wiki_all_ents;all_avg_128_true_true_bert_large_qa_linear;49' -2.9 50 joint
+CUDA_VISIBLE_DEVICES=0 bash run_eval_slurm.sh WebQSP_EL test 'wiki_all_ents;all_avg_128_true_true_bert_large_qa_linear;97' -2.9 50 joint
 
-CUDA_VISIBLE_DEVICES=1 bash run_eval_slurm.sh graphquestions_EL test 'wiki_all_ents;all_avg_128_true_true_bert_large_qa_linear;49' -2.9 50 joint
+CUDA_VISIBLE_DEVICES=1 bash run_eval_slurm.sh graphquestions_EL test 'wiki_all_ents;all_avg_128_true_true_bert_large_qa_linear;97' -2.9 50 joint
 ```
 
 Pretrain on Wikipedia, finetuned on WebQSP
@@ -109,7 +106,7 @@ bash run_eval_slurm.sh graphquestions_EL $split 'finetuned_webqsp;all_avg_128_tr
 
 Run something on CPUs:
 ```console
-srun --gpus-per-node=0 --partition=learnfair --time=3000 --cpus-per-task 80 --mem=400000 --pty -l bash run_eval_slurm.sh nq ${split} 'finetuned_webqsp;all_mention_biencoder_all_avg_20_true_true_bert_large_qa_linear' -4.5 50 joint 16
+srun --gpus-per-node=0 --partition=learnfair --time=3000 --cpus-per-task 80 --mem=400000 --pty -l bash run_eval_slurm.sh nq ${split} 'finetuned_webqsp;all_mention_biencoder_all_avg_20_true_true_bert_large_qa_linear' -4.5 50 joint 16 false false
 ```
 
 For Wiki-trained, best threshold is `TODO` (-2.9) for WebQSP, `TODO` (-2.9) for graphquestions, -3.5 for AIDA-YAGO.
@@ -122,11 +119,11 @@ The following table summarizes the performance of BLINK for the considered datas
 model | dataset | biencoder precision | biencoder recall | biencoder F1 | runtime (s), bsz=64, bsz=1 (1CPU), bsz=1 (80CPU) |
 ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
 WebQSP train | WebQSP test | 0.8999 | 0.8498 | 0.8741 | 183.4 |
-Wiki train (e49; HNSW) | WebQSP test | 0.8607 | 0.8181 | 0.8389 | 33.53 |
+Wiki train (e97; HNSW) | WebQSP test | 0.8607 | 0.8181 | 0.8389 | 33.53 |
 Pretrain Wiki, Finetune WebQSP | WebQSP test | 0.9170 | 0.8788 | 0.8975 | ? |
-Pretrain Wiki, Finetune WebQSP (HNSW index) | WebQSP test | 0.9098 | 0.8704 | 0.8897 | 26.43, 2429.3, 328.1 |
+Pretrain Wiki, Finetune WebQSP (HNSW index) | WebQSP test | 0.9098 | 0.8704 | 0.8897 | 26.43, 2429.3, 345.2 |
 WebQSP train | GraphQuestions test | 0.6010 | 0.5720 | 0.5862 | 756.3 |
-Wiki train (e49; HNSW) | GraphQuestions test | 0.6975 | 0.6975 | 0.6975 | 43.32 |
+Wiki train (e47; HNSW) | GraphQuestions test | 0.6975 | 0.6975 | 0.6975 | 43.32 |
 Pretrain Wiki, Finetune WebQSP | GraphQuestions test | 0.7533 | 0.6686 | 0.7084 | ? |
 Pretrain Wiki, Finetune WebQSP (HNSW index) | GraphQuestions test | 0.7467 | 0.6641 | 0.7030 | 51.50 |
 Wiki train (e23) | AIDA-YAGO2 test(?) | 0.7069 | 0.6952 | 0.7010 | ? |

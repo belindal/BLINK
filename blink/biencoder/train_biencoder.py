@@ -87,7 +87,6 @@ def evaluate(
         with torch.no_grad():
             # evaluate with joint mention detection
             if params["freeze_cand_enc"]:
-                # get mention encoding
                 context_outs = reranker.encode_context(
                     context_input,
                     num_cand_mentions=50,
@@ -240,8 +239,15 @@ def main(params):
     logger.info("Finished reading all train samples")
 
     # Load eval data
-    valid_samples = utils.read_dataset("valid", params["data_path"])
-    valid_subset = 1024
+    try:
+        valid_samples = utils.read_dataset("valid", params["data_path"])
+    except FileNotFoundError:
+        valid_samples = utils.read_dataset("dev", params["data_path"])
+    # MUST BE DIVISBLE BY n_gpus OTHERWISE ERROR AT LAST EPOCH
+    if len(valid_samples) > 1024:
+        valid_subset = 1024
+    else:
+        valid_subset = len(valid_samples) - len(valid_samples) % torch.cuda.device_count()
     logger.info("Read %d valid samples, choosing %d subset" % (len(valid_samples), valid_subset))
 
     # save memory
@@ -257,6 +263,7 @@ def main(params):
         debug=params["debug"],
         add_mention_bounds=(not args.no_mention_bounds),
         candidate_token_ids=None,
+        get_entity_descriptions=(not params["freeze_cand_enc"]),
         # saved_context_dir=os.path.join(tokenized_contexts_dir, "valid"),
     )
     candidate_token_ids = extra_ret_values["candidate_token_ids"]
@@ -318,6 +325,7 @@ def main(params):
             add_mention_bounds=(not args.no_mention_bounds),
             # saved_context_dir=os.path.join(tokenized_contexts_dir, "train{}".format(train_split)),
             candidate_token_ids=candidate_token_ids,
+            get_entity_descriptions=(not params["freeze_cand_enc"]),
         )
         logger.info("Finished preparing training data")
     else:
@@ -331,7 +339,7 @@ def main(params):
         # min(len(train_tensor_data_tuple[0]), num_samples_per_batch), 
         logger
     )
-    if trainer_path is not None:
+    if trainer_path is not None and os.path.exists(trainer_path):
         training_state = torch.load(trainer_path)
         optimizer.load_state_dict(training_state["optimizer"])
         scheduler.load_state_dict(training_state["scheduler"])
@@ -363,6 +371,7 @@ def main(params):
                 add_mention_bounds=(not args.no_mention_bounds),
                 # saved_context_dir=os.path.join(tokenized_contexts_dir, "train{}".format(train_split)),
                 candidate_token_ids=candidate_token_ids,
+                get_entity_descriptions=(not params["freeze_cand_enc"]),
             )
             logger.info("Finished preparing training data for epoch {}: {} samples".format(epoch_idx, len(train_tensor_data_tuple[0])))
     
